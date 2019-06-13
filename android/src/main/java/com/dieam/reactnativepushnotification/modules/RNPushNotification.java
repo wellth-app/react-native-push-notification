@@ -28,17 +28,23 @@ import java.util.Random;
 
 import android.util.Log;
 
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.google.firebase.messaging.FirebaseMessaging;
 
 public class RNPushNotification extends ReactContextBaseJavaModule implements ActivityEventListener {
     public static final String LOG_TAG = "RNPushNotification";// all logging should use this tag
 
+    public static RNPushNotificationJsDelivery jsDelivery;
+
     private RNPushNotificationHelper mRNPushNotificationHelper;
     private final Random mRandomNumberGenerator = new Random(System.currentTimeMillis());
     private RNPushNotificationJsDelivery mJsDelivery;
+    private ReactApplicationContext reactApplicationContext;
 
     public RNPushNotification(ReactApplicationContext reactContext) {
         super(reactContext);
+        this.reactApplicationContext = reactContext;
+        jsDelivery = new RNPushNotificationJsDelivery(reactContext);
 
         reactContext.addActivityEventListener(this);
 
@@ -235,5 +241,18 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
     @ReactMethod
     public void registerNotificationActions(ReadableArray actions) {
         registerNotificationsReceiveNotificationActions(actions);
+    }
+
+    /**
+     * Listener for native Android broadcasts
+     *
+     */
+    public class LocalBroadcastReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String someData = intent.getStringExtra("my-extra-data");
+            reactApplicationContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                    .emit("JS-Event", someData);
+        }
     }
 }

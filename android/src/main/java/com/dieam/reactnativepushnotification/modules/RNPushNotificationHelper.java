@@ -22,6 +22,7 @@ import android.os.Bundle;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
 
+import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
 
 import org.json.JSONArray;
@@ -44,10 +45,14 @@ public class RNPushNotificationHelper {
     private static final long ONE_HOUR = 60 * ONE_MINUTE;
     private static final long ONE_DAY = 24 * ONE_HOUR;
 
+    private RNPushNotificationJsDelivery mJsDelivery;
+
+
     public RNPushNotificationHelper(Application context) {
         this.context = context;
         this.config = new RNPushNotificationConfig(context);
         this.scheduledNotificationsPersistence = context.getSharedPreferences(RNPushNotificationHelper.PREFERENCES_KEY, Context.MODE_PRIVATE);
+        mJsDelivery = new RNPushNotificationJsDelivery((ReactApplicationContext) context);
     }
 
     public Class getMainActivityClass() {
@@ -389,8 +394,10 @@ public class RNPushNotificationHelper {
             if (bundle.containsKey("tag")) {
                 String tag = bundle.getString("tag");
                 notificationManager.notify(tag, notificationID, info);
+                RNPushNotification.jsDelivery.notifyNotification(bundle);
             } else {
                 notificationManager.notify(notificationID, info);
+                RNPushNotification.jsDelivery.notifyNotification(bundle);
             }
 
             // Can't use setRepeating for recurring notifications because setRepeating
