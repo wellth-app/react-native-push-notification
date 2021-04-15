@@ -16,6 +16,7 @@ import com.dieam.reactnativepushnotification.helpers.ApplicationBadgeHelper;
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Callback;
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
@@ -40,7 +41,7 @@ import com.google.firebase.iid.FirebaseInstanceId;
 import com.google.firebase.iid.InstanceIdResult;
 import com.google.firebase.messaging.FirebaseMessaging;
 
-public class RNPushNotification extends ReactContextBaseJavaModule implements ActivityEventListener {
+public class RNPushNotification extends ReactContextBaseJavaModule implements ActivityEventListener, LifecycleEventListener {
     public static final String LOG_TAG = "RNPushNotification";// all logging should use this tag
     public static final String KEY_TEXT_REPLY = "key_text_reply";
 
@@ -61,6 +62,7 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
         super(reactContext);
 
         reactContext.addActivityEventListener(this);
+        reactContext.addLifecycleEventListener(this);
 
         Application applicationContext = (Application) reactContext.getApplicationContext();
 
@@ -115,6 +117,30 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
         if (bundle != null) {
             mJsDelivery.notifyNotification(bundle);
         }
+    }
+
+    @Override
+    public void onHostResume() {
+        Activity activity = getCurrentActivity();
+        if (activity != null) {
+            Intent intent = activity.getIntent();
+            Bundle bundle = intent.getBundleExtra("notification");
+            if (bundle != null) {
+                bundle.putBoolean("foreground", false);
+                bundle.putBoolean("userInteraction", true);
+                mJsDelivery.notifyNotification(bundle);
+            }
+        }
+    }
+
+    @Override
+    public void onHostPause() {
+        // Activity `onPause`
+    }
+
+    @Override
+    public void onHostDestroy() {
+        // Activity `onDestroy`
     }
 
     @ReactMethod

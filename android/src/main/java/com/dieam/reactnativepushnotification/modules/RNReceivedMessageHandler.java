@@ -3,8 +3,6 @@ package com.dieam.reactnativepushnotification.modules;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
-import android.app.ActivityManager;
-import android.app.ActivityManager.RunningAppProcessInfo;
 import android.app.Application;
 import android.os.Bundle;
 import android.os.Handler;
@@ -15,21 +13,19 @@ import android.net.Uri;
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 
-import com.dieam.reactnativepushnotification.helpers.ApplicationBadgeHelper;
 import com.facebook.react.ReactApplication;
 import com.facebook.react.ReactInstanceManager;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
 
-import org.json.JSONObject;
-
 import java.util.Map;
-import java.util.List;
 import java.security.SecureRandom;
 
-import static android.content.Context.ACTIVITY_SERVICE;
 import static com.dieam.reactnativepushnotification.modules.RNPushNotification.LOG_TAG;
 
+/**
+ * Handles a remote notification
+ */
 public class RNReceivedMessageHandler {
     private FirebaseMessagingService mFirebaseMessagingService;
 
@@ -120,8 +116,6 @@ public class RNReceivedMessageHandler {
 
         bundle.putParcelable("data", dataBundle);
 
-        Log.v(LOG_TAG, "onMessageReceived: " + bundle);
-
         // We need to run this on the main thread, as the React code assumes that is true.
         // Namely, DevServerHelper constructs a Handler() without a Looper, which triggers:
         // "Can't create handler inside thread that has not called Looper.prepare()"
@@ -161,13 +155,15 @@ public class RNReceivedMessageHandler {
 
         Application applicationContext = (Application) context.getApplicationContext();
 
-        RNPushNotificationConfig config = new RNPushNotificationConfig(mFirebaseMessagingService.getApplication());  
+        RNPushNotificationConfig config = new RNPushNotificationConfig(mFirebaseMessagingService.getApplication());
         RNPushNotificationHelper pushNotificationHelper = new RNPushNotificationHelper(applicationContext);
 
         boolean isForeground = pushNotificationHelper.isApplicationInForeground();
+        boolean isBackground = pushNotificationHelper.isApplicationInBackground();
 
         RNPushNotificationJsDelivery jsDelivery = new RNPushNotificationJsDelivery(context);
         bundle.putBoolean("foreground", isForeground);
+        bundle.putBoolean("background", isBackground);
         bundle.putBoolean("userInteraction", false);
         jsDelivery.notifyNotification(bundle);
 
@@ -176,9 +172,14 @@ public class RNReceivedMessageHandler {
             jsDelivery.notifyRemoteFetch(bundle);
         }
 
-        if (config.getNotificationForeground() || !isForeground) {
-            Log.v(LOG_TAG, "sendNotification: " + bundle);
+        final Bundle remoteDataBundle = bundle.getBundle("data");
 
+        if (remoteDataBundle != null) {
+            bundle.putString("message", remoteDataBundle.getString("mp_message"));
+            bundle.putString("title", remoteDataBundle.getString("mp_title"));
+            bundle.putString("remoteService", "Mixpanel");
+            pushNotificationHelper.sendToNotificationCentre(bundle);
+        } else {
             pushNotificationHelper.sendToNotificationCentre(bundle);
         }
     }

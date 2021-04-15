@@ -146,8 +146,6 @@ public class RNPushNotificationHelper {
         RNPushNotificationAttributes notificationAttributes = new RNPushNotificationAttributes(bundle);
         String id = notificationAttributes.getId();
 
-        Log.d(LOG_TAG, "Storing push notification with id " + id);
-
         SharedPreferences.Editor editor = scheduledNotificationsPersistence.edit();
         editor.putString(id, notificationAttributes.toJson().toString());
         editor.apply();
@@ -197,6 +195,43 @@ public class RNPushNotificationHelper {
       aggregator.setBigLargeIconUrl(context, bundle.getString("bigLargeIconUrl"));
       aggregator.setBigPictureUrl(context, bundle.getString("bigPictureUrl"));
     }
+
+    private PendingIntent generateNotificationTapIntent(Bundle bundle) {
+        try {
+            int notificationID = Integer.parseInt(bundle.getString("id"));
+
+            Intent notificationIntent = new Intent(context, RNPushNotificationInteractionTracker.class);
+            bundle.putBoolean("foreground", this.isApplicationInForeground());
+            bundle.putBoolean("userInteraction", true);
+            bundle.putBoolean("dismissed", false);
+            notificationIntent.putExtra("notification", bundle);
+
+            return PendingIntent.getBroadcast(context, notificationID, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        } catch (Exception e) {
+            Log.e(LOG_TAG, "Unable to parse Notification ID", e);
+        }
+
+        return null;
+    }
+
+    private PendingIntent generateNotificationDismissIntent(Bundle bundle) {
+        try {
+            int notificationID = Integer.parseInt(bundle.getString("id"));
+
+            Intent notificationIntent = new Intent(context, RNPushNotificationInteractionTracker.class);
+            bundle.putBoolean("foreground", this.isApplicationInForeground());
+            bundle.putBoolean("userInteraction", true);
+            bundle.putBoolean("dismissed", true);
+            notificationIntent.putExtra("notification", bundle);
+
+            return PendingIntent.getBroadcast(context, notificationID + 1, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        } catch (Exception e) {
+            Log.e(LOG_TAG, "Unable to parse Notification ID", e);
+        }
+
+        return null;
+    }
+
 
     public void sendToNotificationCentreWithPicture(Bundle bundle, Bitmap largeIconBitmap, Bitmap bigPictureBitmap, Bitmap bigLargeIconBitmap) {
         try {
@@ -274,9 +309,11 @@ public class RNPushNotificationHelper {
             String channel_id = bundle.getString("channelId");
 
             if(channel_id == null) {
-                channel_id = this.config.getNotificationDefaultChannelId();
+                // channel_id = this.config.getNotificationDefaultChannelId();
+                // TODO: Make this default dynamic
+                channel_id = "Wellth";
             }
-            
+
             NotificationCompat.Builder notification = new NotificationCompat.Builder(context, channel_id)
                     .setContentTitle(title)
                     .setTicker(bundle.getString("ticker"))
@@ -411,16 +448,10 @@ public class RNPushNotificationHelper {
 
             notification.setStyle(style);
 
-            Intent intent = new Intent(context, intentClass);
-            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            bundle.putBoolean("foreground", this.isApplicationInForeground());
-            bundle.putBoolean("userInteraction", true);
-            intent.putExtra("notification", bundle);
-
             // Add message_id to intent so react-native-firebase/messaging can identify it
             String messageId = bundle.getString("messageId");
             if (messageId != null) {
-                intent.putExtra("message_id", messageId);
+//                intent.putExtra("message_id", messageId);
             }
 
             Uri soundUri = null;
@@ -454,9 +485,6 @@ public class RNPushNotificationHelper {
             }
 
             int notificationID = Integer.parseInt(notificationIdString);
-
-            PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationID, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT);
 
             NotificationManager notificationManager = notificationManager();
 
@@ -496,7 +524,10 @@ public class RNPushNotificationHelper {
             notification.setUsesChronometer(bundle.getBoolean("usesChronometer", false));
                 
             notification.setChannelId(channel_id);
-            notification.setContentIntent(pendingIntent);
+
+            // Set the intent for the "tapped" and "dismissed" state
+            notification.setContentIntent(this.generateNotificationTapIntent(bundle));
+            notification.setDeleteIntent(this.generateNotificationDismissIntent(bundle));
 
             JSONArray actionsArray = null;
             try {
@@ -530,11 +561,12 @@ public class RNPushNotificationHelper {
                     actionIntent.putExtra("notification", bundle);
                     actionIntent.setPackage(packageName);
                     if (messageId != null) {
-                        intent.putExtra("message_id", messageId);
+//                        intent.putExtra("message_id", messageId);
                     }
 
                     PendingIntent pendingActionIntent = PendingIntent.getBroadcast(context, notificationID, actionIntent,
                             PendingIntent.FLAG_UPDATE_CURRENT);
+
                     if(action.equals("ReplyInput")){
                         //Action with inline reply
                         if(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH){
@@ -580,16 +612,14 @@ public class RNPushNotificationHelper {
                 editor.apply();
             }
 
-            if (!(this.isApplicationInForeground() && bundle.getBoolean("ignoreInForeground"))) {
                 Notification info = notification.build();
                 info.defaults |= Notification.DEFAULT_LIGHTS;
 
-                if (bundle.containsKey("tag")) {
-                    String tag = bundle.getString("tag");
-                    notificationManager.notify(tag, notificationID, info);
-                } else {
-                    notificationManager.notify(notificationID, info);
-                }
+            if (bundle.containsKey("tag")) {
+                String tag = bundle.getString("tag");
+                notificationManager.notify(tag, notificationID, info);
+            } else {
+                notificationManager.notify(notificationID, info);
             }
 
             // Can't use setRepeating for recurring notifications because setRepeating
@@ -974,6 +1004,21 @@ public class RNPushNotificationHelper {
             for (RunningAppProcessInfo processInfo : processInfos) {
                 if (processInfo.processName.equals(context.getPackageName())
                         && processInfo.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+                        && processInfo.pkgList.length > 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean isApplicationInBackground() {
+        ActivityManager activityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        List<RunningAppProcessInfo> processInfos = activityManager.getRunningAppProcesses();
+        if (processInfos != null) {
+            for (RunningAppProcessInfo processInfo : processInfos) {
+                if (processInfo.processName.equals(context.getPackageName())
+                        && (processInfo.importance == RunningAppProcessInfo.IMPORTANCE_CACHED || processInfo.importance == RunningAppProcessInfo.IMPORTANCE_SERVICE)
                         && processInfo.pkgList.length > 0) {
                     return true;
                 }
